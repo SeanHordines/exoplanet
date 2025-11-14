@@ -1,4 +1,4 @@
-% Sean Hordines, Name 2, Name 3
+% Sean Hordines, Lee McKinstry, Name 3
 % Digital Information Processing
 % Yong Wei
 
