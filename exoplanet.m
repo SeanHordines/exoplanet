@@ -1,4 +1,4 @@
-% Sean Hordines, Name 2, Name 3
+% Sean Hordines, Lee McKinstry, Name 3
 % Digital Information Processing
 % Yong Wei
 
@@ -43,3 +43,50 @@ title('Proxima Centauri'); % Change to match file
 grid on;
 
 fclose(fileID);
+
+% Exoplanet Detection via Lomb-Scargle Periodogram with Peak Detection
+time = RadialVelocityData(:, 1);
+velocity = RadialVelocityData(:, 2);
+error = RadialVelocityData(:, 3);
+
+% Normalize Time (makes sure time starts at zero for numerical stability)
+time = time - min(time);
+
+% Define Frequency Range (Sets up Frequency sweep to detect periodic signals)
+minFreq = 1 / max(time);
+maxFreq = 1;
+freq = linspace(minFreq, maxFreq, 10000) % create 10,000 evenly spaced freq samples
+
+% Compute Lomb-Scargle periodogram
+[power, ~] = plomb(velocity, time, freq, 'FrequencyLimits', [minFreq maxFreq]);
+
+% Convert freq values to orbital periods (in days)
+periods = 1 ./ freq;
+
+% Plot periodogram
+figure;
+plot(periods, power, 'k');      % Plot power vs. period in black
+xlabel('Period (days)');
+ylabel('Lomb-Scargle Power');
+title('Periodogram for Exoplanet Detection');
+grid on;
+
+% Peak Detection
+smoothedPower = smooth(power, 15);  % Optional smoothing with moving average (window size = 15)
+threshold = 0.2 * max(smoothedPower);  % Only consider peaks above 20% of the strongest signal
+[peakVals, peakLocs] = findpeaks(smoothedPower, periods, ...
+                                 'MinPeakHeight', threshold, ...
+                                 'MinPeakDistance', 5); % Detects logical maxima in smoothed power spectrum
+
+% Annotate peaks
+hold on;
+plot(peakLocs, peakVals, 'ro', 'MarkerFaceColor', 'r');  % Red dots at peak locations
+text(peakLocs + 0.5, peakVals, compose('%.1f d', peakLocs), ...
+     'Color', 'red', 'FontSize', 8);
+hold off;
+
+% Print detected periods
+fprintf('\nDetected candidate orbital periods:\n');
+for i = 1:length(peakLocs)
+    fprintf('  %.2f days (Power = %.3f)\n', peakLocs(i), peakVals(i));
+end
