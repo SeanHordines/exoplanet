@@ -1,0 +1,35 @@
+filename = 'data/Proxima_Cen_(1).tbl';
+fileID = fopen(filename, 'r');
+
+if fileID == -1
+    error('File could not be opened. Check if the file exists and the name is correct.');
+end
+
+RadialVelocityData = [];
+
+tline = fgetl(fileID);
+while ischar(tline)
+    if ~startsWith(tline, '|') && ~startsWith(tline, '\')
+        dataPoints = sscanf(tline, '%f', 3);
+        RadialVelocityData = [RadialVelocityData; dataPoints'];
+    end
+    tline = fgetl(fileID);
+end
+
+% Convert Julian Date to days since start
+JulianDate = RadialVelocityData(:, 1);
+Days = JulianDate - RadialVelocityData(1, 1);
+RadialVelocityData(:, 1) = Days;
+
+disp(size(RadialVelocityData));
+format long g;
+disp(RadialVelocityData);
+
+figure;
+plot(RadialVelocityData(:, 1), RadialVelocityData(:, 2), 'o-');
+xlabel('Days since Start');
+ylabel('Radial Velocity');
+title('Proxima Centauri');
+grid on;
+
+fclose(fileID);
