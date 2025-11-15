@@ -33,9 +33,9 @@ disp(RadialVelocityData);
 
 % Plot the data with error bars
 figure;
-errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o-', 'Color', 'b', 'MarkerFaceColor', 'c');
+errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o-', 'Color', 'b', 'MarkerFaceColor', 'r');
 hold on;
-errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o', 'Color', 'r');
+errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o', 'Color', 'c');
 hold off;
 xlabel('Days since Start');
 ylabel('Radial Velocity');
@@ -47,7 +47,7 @@ fclose(fileID);
 % Exoplanet Detection via Lomb-Scargle Periodogram with Peak Detection
 time = RadialVelocityData(:, 1);
 velocity = RadialVelocityData(:, 2);
-error = RadialVelocityData(:, 3);
+sigma = RadialVelocityData(:, 3);
 
 % Check that time is strictly increasing
 if any(diff(time) <= 0)
@@ -59,11 +59,11 @@ time = time - min(time);
 
 % Define Frequency Range (Sets up Frequency sweep to detect periodic signals)
 minFreq = 1 / max(time);
-maxFreq = 1;
-freq = linspace(minFreq, maxFreq, 10000); % create 10,000 evenly spaced freq samples
+maxFreq = ;
+freq = linspace(minFreq, 1, 10000); % create 10,000 evenly spaced freq samples
 
 % Compute Lomb-Scargle periodogram
-[power, ~] = plomb(velocity, time, freq);
+[power, ~] = plomb(velocity, time, freq, 'normalized');
 
 % Convert freq values to orbital periods (in days)
 periods = 1 ./ freq;
@@ -74,23 +74,22 @@ periods = flip(periods);
 
 % Plot periodogram
 figure;
-
-plot(periods, power, 'b');      % Plot power vs. period in black
+plot(periods, power, 'b');      % Plot power vs. period in blue
 xlabel('Period (days)');
 ylabel('Lomb-Scargle Power');
 title('Periodogram for Exoplanet Detection');
 grid on;
 
 % Peak Detection
-smoothedPower = smooth(power, 15);  % Optional smoothing with moving average (window size = 15)
-threshold = 1.2 * max(smoothedPower);  % Only consider peaks above 20% of the strongest signal
+smoothedPower = smooth(power, 50);  % Optional smoothing with moving average (window size = 50)
+threshold = 0.2 * max(smoothedPower);  % Only consider peaks above 20% of the strongest signal
 [peakVals, peakLocs] = findpeaks(smoothedPower, periods, ...
                                  'MinPeakHeight', threshold, ...
                                  'MinPeakDistance', 5); % Detects logical maxima in smoothed power spectrum
 
 % Annotate peaks
-hold on;
 set(gca, 'XScale', 'log');
+hold on;
 plot(peakLocs, peakVals, 'ro', 'MarkerFaceColor', 'r');  % Red dots at peak locations
 text(peakLocs + 0.5, peakVals, compose('%.1f d', peakLocs), ...
      'Color', 'red', 'FontSize', 8);

@@ -21,15 +21,10 @@ while ischar(tline)
     tline = fgetl(fileID);
 end
 
-% Convert Julian Date to days since start
-JulianDate = RadialVelocityData(:, 1);
-Days = JulianDate - RadialVelocityData(1, 1);
-RadialVelocityData(:, 1) = Days;
-
 % Preview the data
-disp(size(RadialVelocityData));
 format long g;
-disp(RadialVelocityData);
+% disp(size(RadialVelocityData));
+% disp(RadialVelocityData);
 
 % Plot the data with error bars
 figure;
@@ -49,11 +44,6 @@ time = RadialVelocityData(:, 1);
 velocity = RadialVelocityData(:, 2);
 sigma = RadialVelocityData(:, 3);
 
-% Check that time is strictly increasing
-if any(diff(time) <= 0)
-    error('Time data is not strictly increasing. Please check the input data.');
-end
-
 % Normalize Time (makes sure time starts at zero for numerical stability)
 time = time - min(time);
 
@@ -72,18 +62,25 @@ periods = 1 ./ freq;
 power = flip(power);
 periods = flip(periods);
 
+% Apply bandpass filter
+minPeriod = 1;    % days
+maxPeriod = 250;  % days
+bandpassIdx = periods >= minPeriod & periods <= maxPeriod;
+filteredPeriods = periods(bandpassIdx);
+filteredPower = power(bandpassIdx);
+
 % Plot periodogram
 figure;
-plot(periods, power, 'b');      % Plot power vs. period in blue
+plot(filteredPeriods, filteredPower, 'b');      % Plot power vs. period in blue
 xlabel('Period (days)');
 ylabel('Lomb-Scargle Power');
 title('Periodogram for Exoplanet Detection');
 grid on;
 
 % Peak Detection
-smoothedPower = smooth(power, 50);  % Optional smoothing with moving average (window size = 50)
+smoothedPower = smooth(filteredPower, 50);  % Optional smoothing with moving average (window size = 50)
 threshold = 0.2 * max(smoothedPower);  % Only consider peaks above 20% of the strongest signal
-[peakVals, peakLocs] = findpeaks(smoothedPower, periods, ...
+[peakVals, peakLocs] = findpeaks(smoothedPower, filteredPeriods, ...
                                  'MinPeakHeight', threshold, ...
                                  'MinPeakDistance', 5); % Detects logical maxima in smoothed power spectrum
 
