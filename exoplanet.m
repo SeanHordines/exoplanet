@@ -11,8 +11,12 @@ end
 
 RadialVelocityData = [];
 
-% Read in the data from file line by line
+% Read in the star ID
 tline = fgetl(fileID);
+starID = extractBetween(tline, '"', '"'); % Extract the star ID using extractBetween
+fprintf('Star ID: %s\n', starID{1}); % Access the first element of the cell array
+
+% Read in the data from file line by line
 while ischar(tline)
     if ~startsWith(tline, '|') && ~startsWith(tline, '\')
         dataPoints = sscanf(tline, '%f', 3);
@@ -34,7 +38,7 @@ errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(
 hold off;
 xlabel('Days since Start');
 ylabel('Radial Velocity');
-title('Proxima Centauri'); % Change to match file
+title([starID, '- Radial Velocity vs Time']);
 grid on;
 
 fclose(fileID);
@@ -74,7 +78,7 @@ figure;
 plot(filteredPeriods, filteredPower, 'b');      % Plot power vs. period in blue
 xlabel('Period (days)');
 ylabel('Lomb-Scargle Power');
-title('Periodogram for Exoplanet Detection');
+title([starID, ' - LS Periodogram']);
 grid on;
 
 % Peak Detection
@@ -93,7 +97,7 @@ text(peakLocs + 0.5, peakVals, compose('%.1f d', peakLocs), ...
 hold off;
 
 % Print detected periods
-fprintf('\nDetected candidate orbital periods:\n');
+fprintf('Detected candidate orbital periods:\n');
 for i = 1:length(peakLocs)
     fprintf('  %.2f days (Power = %.3f)\n', peakLocs(i), peakVals(i));
 end
