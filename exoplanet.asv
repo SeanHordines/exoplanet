@@ -11,8 +11,12 @@ end
 
 RadialVelocityData = [];
 
-% Read in the data from file line by line
+% Read in the star ID
 tline = fgetl(fileID);
+starID = extractBetween(tline, '"', '"'); % Extract the star ID using extractBetween
+fprintf('Star ID: %s\n', starID{1}); % Access the first element of the cell array
+
+% Read in the data from file line by line
 while ischar(tline)
     if ~startsWith(tline, '|') && ~startsWith(tline, '\')
         dataPoints = sscanf(tline, '%f', 3);
@@ -21,15 +25,10 @@ while ischar(tline)
     tline = fgetl(fileID);
 end
 
-% Convert Julian Date to days since start
-JulianDate = RadialVelocityData(:, 1);
-Days = JulianDate - RadialVelocityData(1, 1);
-RadialVelocityData(:, 1) = Days;
-
 % Preview the data
-disp(size(RadialVelocityData));
 format long g;
-disp(RadialVelocityData);
+% disp(size(RadialVelocityData));
+% disp(RadialVelocityData);
 
 % Plot the data with error bars
 figure;
@@ -37,9 +36,9 @@ errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(
 hold on;
 errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o', 'Color', 'c');
 hold off;
-xlabel('Days since Start');
+xlabel('Time (days)');
 ylabel('Radial Velocity');
-title('Proxima Centauri'); % Change to match file
+title([starID, '- Radial Velocity vs Time']);
 grid on;
 
 fclose(fileID);
@@ -49,18 +48,13 @@ time = RadialVelocityData(:, 1);
 velocity = RadialVelocityData(:, 2);
 sigma = RadialVelocityData(:, 3);
 
-% Check that time is strictly increasing
-if any(diff(time) <= 0)
-    error('Time data is not strictly increasing. Please check the input data.');
-end
-
 % Normalize Time (makes sure time starts at zero for numerical stability)
 time = time - min(time);
 
 % Define Frequency Range (Sets up Frequency sweep to detect periodic signals)
 minFreq = 1 / max(time);
-maxFreq = ;
-freq = linspace(minFreq, 1, 10000); % create 10,000 evenly spaced freq samples
+maxFreq = 1;
+freq = linspace(minFreq, maxFreq, 10000); % create 10,000 evenly spaced freq samples
 
 % Compute Lomb-Scargle periodogram
 [power, ~] = plomb(velocity, time, freq, 'normalized');
@@ -72,18 +66,25 @@ periods = 1 ./ freq;
 power = flip(power);
 periods = flip(periods);
 
+% Apply bandpass filter
+minPeriod = 1;    % days
+maxPeriod = 250;  % days
+bandpassIdx = periods >= minPeriod & periods <= maxPeriod;
+filteredPeriods = periods(bandpassIdx);
+filteredPower = power(bandpassIdx);
+
 % Plot periodogram
 figure;
-plot(periods, power, 'b');      % Plot power vs. period in blue
+plot(filteredPeriods, filteredPower, 'b');      % Plot power vs. period in blue
 xlabel('Period (days)');
 ylabel('Lomb-Scargle Power');
-title('Periodogram for Exoplanet Detection');
+title([starID, ' - LS Periodogram']);
 grid on;
 
 % Peak Detection
-smoothedPower = smooth(power, 50);  % Optional smoothing with moving average (window size = 50)
+smoothedPower = smooth(filteredPower, 50);  % Optional smoothing with moving average (window size = 50)
 threshold = 0.2 * max(smoothedPower);  % Only consider peaks above 20% of the strongest signal
-[peakVals, peakLocs] = findpeaks(smoothedPower, periods, ...
+[peakVals, peakLocs] = findpeaks(smoothedPower, filteredPeriods, ...
                                  'MinPeakHeight', threshold, ...
                                  'MinPeakDistance', 5); % Detects logical maxima in smoothed power spectrum
 
@@ -96,7 +97,27 @@ text(peakLocs + 0.5, peakVals, compose('%.1f d', peakLocs), ...
 hold off;
 
 % Print detected periods
-fprintf('\nDetected candidate orbital periods:\n');
+fprintf('Detected candidate orbital periods:\n');
 for i = 1:length(peakLocs)
     fprintf('  %.2f days (Power = %.3f)\n', peakLocs(i), peakVals(i));
 end
+
+% Fold the time series over the period of 11.2 days
+period = 11.2;
+foldedTime = mod(time, period);
+
+% Plot the folded time data
+figure;
+plot(foldedTime, velocity, 'o', 'Color', 'g', 'MarkerFaceColor', 'y');
+hold on;
+
+% Show a sine wave with the same period
+sin_sampling = linspace(0, 2 * pi, 1000);
+sineWave = sin(2 * pi * / period);
+plot(foldedTime, sineWave, 'b-', 'LineWidth', 1.5); % Plot sine wave in blue
+
+xlabel('Time (days, folded over 11.2 days)');
+ylabel('Radial Velocity');
+title([starID, ' - Folded Radial Velocity']);
+grid on;
+hold off;

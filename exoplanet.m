@@ -36,7 +36,7 @@ errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(
 hold on;
 errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o', 'Color', 'c');
 hold off;
-xlabel('Days since Start');
+xlabel('Time (days)');
 ylabel('Radial Velocity');
 title([starID, '- Radial Velocity vs Time']);
 grid on;
@@ -47,6 +47,12 @@ fclose(fileID);
 time = RadialVelocityData(:, 1);
 velocity = RadialVelocityData(:, 2);
 sigma = RadialVelocityData(:, 3);
+
+% Calculate the signal to noise ratio (SNR)
+signalPower = mean(velocity.^2);
+noisePower = mean(sigma.^2);
+SNR = 10 * log10(signalPower / noisePower);
+fprintf('Signal to Noise Ratio (SNR): %.2f dB\n', SNR);
 
 % Normalize Time (makes sure time starts at zero for numerical stability)
 time = time - min(time);
@@ -101,3 +107,15 @@ fprintf('Detected candidate orbital periods:\n');
 for i = 1:length(peakLocs)
     fprintf('  %.2f days (Power = %.3f)\n', peakLocs(i), peakVals(i));
 end
+
+% Fold the time series
+period = 11.2;
+foldedTime = mod(time, period);
+
+% Plot the folded data
+figure;
+plot(foldedTime, velocity, 'o', 'Color', 'g', 'MarkerFaceColor', 'y');
+xlabel('Time (days, folded over 11.2 days)');
+ylabel('Radial Velocity');
+title([starID, ' - Folded Radial Velocity']);
+grid on;
