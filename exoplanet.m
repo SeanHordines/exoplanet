@@ -13,10 +13,10 @@ RadialVelocityData = [];
 
 % Read in the star ID
 tline = fgetl(fileID);
-starID = extractBetween(tline, '"', '"'); % Extract the star ID using extractBetween
-fprintf('Star ID: %s\n', starID{1}); % Access the first element of the cell array
+starID = extractBetween(tline, '"', '"');
+fprintf('Star ID: %s\n', starID{1});
 
-% Read in the data from file line by line
+% Read in the data
 while ischar(tline)
     if ~startsWith(tline, '|') && ~startsWith(tline, '\')
         dataPoints = sscanf(tline, '%f', 3);
@@ -24,98 +24,126 @@ while ischar(tline)
     end
     tline = fgetl(fileID);
 end
-
-% Preview the data
-format long g;
-% disp(size(RadialVelocityData));
-% disp(RadialVelocityData);
-
-% Plot the data with error bars
-figure;
-errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o-', 'Color', 'b', 'MarkerFaceColor', 'r');
-hold on;
-errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o', 'Color', 'c');
-hold off;
-xlabel('Time (days)');
-ylabel('Radial Velocity');
-title([starID, '- Radial Velocity vs Time']);
-grid on;
-
 fclose(fileID);
 
-% Exoplanet Detection via Lomb-Scargle Periodogram with Peak Detection
+% Plot the data
+figure;
+errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o-', 'Color', 'b', 'MarkerFaceColor', 'r');
+xlabel('Time (days)');
+ylabel('Radial Velocity');
+title([starID, ' - Radial Velocity vs Time']);
+grid on;
+
+% Extract data
 time = RadialVelocityData(:, 1);
 velocity = RadialVelocityData(:, 2);
 sigma = RadialVelocityData(:, 3);
 
-% Calculate the signal to noise ratio (SNR)
+% Normalize time
+time = time - min(time);
+
+% Signal-to-noise ratio
 signalPower = mean(velocity.^2);
 noisePower = mean(sigma.^2);
 SNR = 10 * log10(signalPower / noisePower);
 fprintf('Signal to Noise Ratio (SNR): %.2f dB\n', SNR);
 
-% Normalize Time (makes sure time starts at zero for numerical stability)
-time = time - min(time);
-
-% Define Frequency Range (Sets up Frequency sweep to detect periodic signals)
+% Frequency range
 minFreq = 1 / max(time);
 maxFreq = 1;
-freq = linspace(minFreq, maxFreq, 10000); % create 10,000 evenly spaced freq samples
+freq = linspace(minFreq, maxFreq, 10000);
 
-% Compute Lomb-Scargle periodogram
-[power, ~] = plomb(velocity, time, freq, 'normalized');
+% Compute weighted Lomb-Scargle periodogram
+[power, freq] = weighted_lomb_scargle(time, velocity, sigma, freq);
 
-% Convert freq values to orbital periods (in days)
+% Convert to periods and reverse for plotting
 periods = 1 ./ freq;
-
-% reverse for peak detection
 power = flip(power);
 periods = flip(periods);
 
-% Apply bandpass filter
-minPeriod = 1;    % days
-maxPeriod = 250;  % days
+% Bandpass filter
+minPeriod = 1;
+maxPeriod = 250;
 bandpassIdx = periods >= minPeriod & periods <= maxPeriod;
 filteredPeriods = periods(bandpassIdx);
 filteredPower = power(bandpassIdx);
 
 % Plot periodogram
 figure;
-plot(filteredPeriods, filteredPower, 'b');      % Plot power vs. period in blue
+plot(filteredPeriods, filteredPower, 'b');
 xlabel('Period (days)');
-ylabel('Lomb-Scargle Power');
-title([starID, ' - LS Periodogram']);
+ylabel('Weighted Lomb-Scargle Power');
+title([starID, ' - Weighted LS Periodogram']);
 grid on;
 
-% Peak Detection
-smoothedPower = smooth(filteredPower, 50);  % Optional smoothing with moving average (window size = 50)
-threshold = 0.2 * max(smoothedPower);  % Only consider peaks above 20% of the strongest signal
+% Peak detection
+smoothedPower = smooth(filteredPower, 50);
+threshold = 0.2 * max(smoothedPower);
 [peakVals, peakLocs] = findpeaks(smoothedPower, filteredPeriods, ...
                                  'MinPeakHeight', threshold, ...
-                                 'MinPeakDistance', 5); % Detects logical maxima in smoothed power spectrum
+                                 'MinPeakDistance', 5);
 
-% Annotate peaks
+% Plot the weighted Lomb-Scargle periodogram with peaks
+figure;
+plot(filteredPeriods, filteredPower, 'b-', 'LineWidth', 1.5);
+xlabel('Period (days)');
+ylabel('Weighted Lomb-Scargle Power');
+title([starID, ' - Weighted LS Periodogram']);
 set(gca, 'XScale', 'log');
+grid on;
 hold on;
-plot(peakLocs, peakVals, 'ro', 'MarkerFaceColor', 'r');  % Red dots at peak locations
-text(peakLocs + 0.5, peakVals, compose('%.1f d', peakLocs), ...
-     'Color', 'red', 'FontSize', 8);
-hold off;
 
-% Print detected periods
-fprintf('Detected candidate orbital periods:\n');
+% Overlay detected peaks
+plot(peakLocs, peakVals, 'ro', 'MarkerFaceColor', 'r');
+
+% Annotate each peak with its period
 for i = 1:length(peakLocs)
-    fprintf('  %.2f days (Power = %.3f)\n', peakLocs(i), peakVals(i));
+    text(peakLocs(i) + 0.5, peakVals(i), sprintf('%.1f d', peakLocs(i)), ...
+         'Color', 'red', 'FontSize', 8);
 end
 
-% Fold the time series
-period = 11.2;
-foldedTime = mod(time, period);
+hold off;
 
-% Plot the folded data
-figure;
-plot(foldedTime, velocity, 'o', 'Color', 'g', 'MarkerFaceColor', 'y');
-xlabel('Time (days, folded over 11.2 days)');
-ylabel('Radial Velocity');
-title([starID, ' - Folded Radial Velocity']);
-grid on;
+% --- Weighted Lomb-Scargle Periodogram Function ---
+function [power, freq] = weighted_lomb_scargle(time, velocity, sigma, freq)
+    % Ensure column vectors
+    time = time(:);
+    velocity = velocity(:);
+    sigma = sigma(:);
+    freq = freq(:);
+
+    % Compute weights from error bars
+    w = 1 ./ sigma.^2;
+    W = sum(w);
+
+    % Weighted mean of the velocity
+    y_mean = sum(w .* velocity) / W;
+
+    % Center the data
+    y = velocity - y_mean;
+
+    % Initialize power array
+    power = zeros(size(freq));
+
+    % Loop over each frequency
+    for i = 1:length(freq)
+        omega = 2 * pi * freq(i);
+
+        % Compute phase offset tau
+        tan_2omega_tau = sum(w .* sin(2 * omega * time)) / sum(w .* cos(2 * omega * time));
+        tau = atan(tan_2omega_tau) / (2 * omega);
+
+        % Compute sine and cosine terms
+        cos_term = cos(omega * (time - tau));
+        sin_term = sin(omega * (time - tau));
+
+        % Weighted projections
+        C = sum(w .* y .* cos_term);
+        S = sum(w .* y .* sin_term);
+        CC = sum(w .* cos_term.^2);
+        SS = sum(w .* sin_term.^2);
+
+        % Compute normalized power
+        power(i) = (C^2 / CC + S^2 / SS) / (2 * sum(w .* y.^2));
+    end
+end
