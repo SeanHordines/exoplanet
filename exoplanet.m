@@ -11,8 +11,12 @@ end
 
 RadialVelocityData = [];
 
-% Read in the data from file line by line
+% Read in the star ID
 tline = fgetl(fileID);
+starID = extractBetween(tline, '"', '"'); % Extract the star ID using extractBetween
+fprintf('Star ID: %s\n', starID{1}); % Access the first element of the cell array
+
+% Read in the data from file line by line
 while ischar(tline)
     if ~startsWith(tline, '|') && ~startsWith(tline, '\')
         dataPoints = sscanf(tline, '%f', 3);
@@ -32,9 +36,9 @@ errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(
 hold on;
 errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o', 'Color', 'c');
 hold off;
-xlabel('Days since Start');
+xlabel('Time (days)');
 ylabel('Radial Velocity');
-title('Proxima Centauri'); % Change to match file
+title([starID, '- Radial Velocity vs Time']);
 grid on;
 
 fclose(fileID);
@@ -43,6 +47,12 @@ fclose(fileID);
 time = RadialVelocityData(:, 1);
 velocity = RadialVelocityData(:, 2);
 sigma = RadialVelocityData(:, 3);
+
+% Calculate the signal to noise ratio (SNR)
+signalPower = mean(velocity.^2);
+noisePower = mean(sigma.^2);
+SNR = 10 * log10(signalPower / noisePower);
+fprintf('Signal to Noise Ratio (SNR): %.2f dB\n', SNR);
 
 % Normalize Time (makes sure time starts at zero for numerical stability)
 time = time - min(time);
@@ -74,7 +84,7 @@ figure;
 plot(filteredPeriods, filteredPower, 'b');      % Plot power vs. period in blue
 xlabel('Period (days)');
 ylabel('Lomb-Scargle Power');
-title('Periodogram for Exoplanet Detection');
+title([starID, ' - LS Periodogram']);
 grid on;
 
 % Peak Detection
@@ -93,7 +103,19 @@ text(peakLocs + 0.5, peakVals, compose('%.1f d', peakLocs), ...
 hold off;
 
 % Print detected periods
-fprintf('\nDetected candidate orbital periods:\n');
+fprintf('Detected candidate orbital periods:\n');
 for i = 1:length(peakLocs)
     fprintf('  %.2f days (Power = %.3f)\n', peakLocs(i), peakVals(i));
 end
+
+% Fold the time series
+period = 11.2;
+foldedTime = mod(time, period);
+
+% Plot the folded data
+figure;
+plot(foldedTime, velocity, 'o', 'Color', 'g', 'MarkerFaceColor', 'y');
+xlabel('Time (days, folded over 11.2 days)');
+ylabel('Radial Velocity');
+title([starID, ' - Folded Radial Velocity']);
+grid on;
