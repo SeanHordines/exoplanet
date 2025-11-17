@@ -73,7 +73,7 @@ power = flip(power);
 periods = flip(periods);
 
 % Apply bandpass filter
-minPeriod = 1;    % days
+minPeriod = 1.15;    % days
 maxPeriod = 250;  % days
 bandpassIdx = periods >= minPeriod & periods <= maxPeriod;
 filteredPeriods = periods(bandpassIdx);
@@ -89,10 +89,10 @@ grid on;
 
 % Peak Detection
 smoothedPower = smooth(filteredPower, 50);  % Optional smoothing with moving average (window size = 50)
-threshold = 0.2 * max(smoothedPower);  % Only consider peaks above 20% of the strongest signal
+threshold = 0.5 * max(smoothedPower);  % Only consider peaks above 20% of the strongest signal
 [peakVals, peakLocs] = findpeaks(smoothedPower, filteredPeriods, ...
                                  'MinPeakHeight', threshold, ...
-                                 'MinPeakDistance', 5); % Detects logical maxima in smoothed power spectrum
+                                 'MinPeakDistance', 50); % Detects logical maxima in smoothed power spectrum
 
 % Annotate peaks
 set(gca, 'XScale', 'log');
@@ -102,20 +102,16 @@ text(peakLocs + 0.5, peakVals, compose('%.1f d', peakLocs), ...
      'Color', 'red', 'FontSize', 8);
 hold off;
 
+% Add vertical lines for periods of 11.2 days and its multiples (0.5, 2, 3, and 4)
+hold on;
+multiples = [1, 2, 3, 4, 5];
+for i = multiples
+    xline(i * 11.2, 'c--', 'LineWidth', 1); % Dashed lines for specified multiples
+end
+hold off;
+
 % Print detected periods
 fprintf('Detected candidate orbital periods:\n');
 for i = 1:length(peakLocs)
     fprintf('  %.2f days (Power = %.3f)\n', peakLocs(i), peakVals(i));
 end
-
-% Fold the time series
-period = 11.2;
-foldedTime = mod(time, period);
-
-% Plot the folded data
-figure;
-plot(foldedTime, velocity, 'o', 'Color', 'g', 'MarkerFaceColor', 'y');
-xlabel('Time (days, folded over 11.2 days)');
-ylabel('Radial Velocity');
-title([starID, ' - Folded Radial Velocity']);
-grid on;
