@@ -6,17 +6,16 @@ filename = 'data/Proxima_Cen_(1).tbl';
 fileID = fopen(filename, 'r');
 
 if fileID == -1
-    error('File could not be opened. Check if the file exists and the name is correct.');
+    error('Files could not be opened. Check if the file exists and the name is correct.');
 end
-
-RadialVelocityData = [];
 
 % Read in the star ID
 tline = fgetl(fileID);
 starID = extractBetween(tline, '"', '"'); % Extract the star ID using extractBetween
 fprintf('Star ID: %s\n', starID{1}); % Access the first element of the cell array
 
-% Read in the data from file line by line
+% Read in the data from file
+RadialVelocityData = [];
 while ischar(tline)
     if ~startsWith(tline, '|') && ~startsWith(tline, '\')
         dataPoints = sscanf(tline, '%f', 3);
@@ -30,23 +29,13 @@ format long g;
 % disp(size(RadialVelocityData));
 % disp(RadialVelocityData);
 
-% Plot the data with error bars
-figure;
-errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o-', 'Color', 'b', 'MarkerFaceColor', 'r');
-hold on;
-errorbar(RadialVelocityData(:, 1), RadialVelocityData(:, 2), RadialVelocityData(:, 3), 'o', 'Color', 'c');
-hold off;
-xlabel('Time (days)');
-ylabel('Radial Velocity');
-title([starID, '- Radial Velocity vs Time']);
-grid on;
-
-fclose(fileID);
-
 % Exoplanet Detection via Lomb-Scargle Periodogram with Peak Detection
 time = RadialVelocityData(:, 1);
 velocity = RadialVelocityData(:, 2);
 sigma = RadialVelocityData(:, 3);
+
+% Normalize Time (makes sure time starts at zero for numerical stability)
+time = time - min(time);
 
 % Calculate the signal to noise ratio (SNR)
 signalPower = mean(velocity.^2);
@@ -54,8 +43,16 @@ noisePower = mean(sigma.^2);
 SNR = 10 * log10(signalPower / noisePower);
 fprintf('Signal to Noise Ratio (SNR): %.2f dB\n', SNR);
 
-% Normalize Time (makes sure time starts at zero for numerical stability)
-time = time - min(time);
+% Plot the data with error bars
+figure;
+errorbar(time, velocity, sigma, 'o-', 'Color', 'b', 'MarkerFaceColor', 'r');
+hold on;
+errorbar(time, velocity, sigma, 'o', 'Color', 'c');
+hold off;
+xlabel('Time (days)');
+ylabel('Radial Velocity');
+title([starID, '- Radial Velocity vs Time']);
+grid on;
 
 % Define Frequency Range (Sets up Frequency sweep to detect periodic signals)
 minFreq = 1 / max(time);
@@ -73,7 +70,7 @@ power = flip(power);
 periods = flip(periods);
 
 % Apply bandpass filter
-minPeriod = 1;    % days
+minPeriod = 1.15;    % days
 maxPeriod = 250;  % days
 bandpassIdx = periods >= minPeriod & periods <= maxPeriod;
 filteredPeriods = periods(bandpassIdx);
@@ -89,10 +86,10 @@ grid on;
 
 % Peak Detection
 smoothedPower = smooth(filteredPower, 50);  % Optional smoothing with moving average (window size = 50)
-threshold = 0.2 * max(smoothedPower);  % Only consider peaks above 20% of the strongest signal
-[peakVals, peakLocs] = findpeaks(smoothedPower, filteredPeriods, ...
+threshold = 0.5 * max(filteredPower);  % Only consider peaks above 20% of the strongest signal
+[peakVals, peakLocs] = findpeaks(filteredPower, filteredPeriods, ...
                                  'MinPeakHeight', threshold, ...
-                                 'MinPeakDistance', 5); % Detects logical maxima in smoothed power spectrum
+                                 'MinPeakDistance', 50); % Detects logical maxima in smoothed power spectrum
 
 % Annotate peaks
 set(gca, 'XScale', 'log');
@@ -102,20 +99,51 @@ text(peakLocs + 0.5, peakVals, compose('%.1f d', peakLocs), ...
      'Color', 'red', 'FontSize', 8);
 hold off;
 
+% Add vertical lines for periods of 11.2 days and its multiples (0.5, 2, 3, and 4)
+hold on;
+multiples = [1, 2, 3, 4, 5];
+truePeriod = 11.2;
+for i = multiples
+    % xline(i * truePeriod, 'c--', 'LineWidth', 1); % Dashed lines for specified multiples
+end
+hold off;
+
 % Print detected periods
 fprintf('Detected candidate orbital periods:\n');
 for i = 1:length(peakLocs)
     fprintf('  %.2f days (Power = %.3f)\n', peakLocs(i), peakVals(i));
 end
 
-% Fold the time series
-period = 11.2;
-foldedTime = mod(time, period);
+% Empirical False Alarm Probability via permutation
+rng(314159265);
+numPerms = 5000;
 
-% Plot the folded data
-figure;
-plot(foldedTime, velocity, 'o', 'Color', 'g', 'MarkerFaceColor', 'y');
-xlabel('Time (days, folded over 11.2 days)');
-ylabel('Radial Velocity');
-title([starID, ' - Folded Radial Velocity']);
-grid on;
+% Map each detected period to its index in filteredPeriods
+peakIdx = zeros(size(peakLocs));
+for i = 1:length(peakLocs)
+    [~, peakIdx(i)] = min(abs(filteredPeriods - peakLocs(i)));
+end
+
+% Preallocate counters
+exceedCount = zeros(size(peakIdx));
+
+fprintf('\nRunning %d permutations for empirical FAP (may take time)...\n', numPerms);
+maxPowers = zeros(numPerms,1);
+
+for b = 1:numPerms
+    % Permute velocity values
+    permVel = velocity(randperm(length(velocity)));
+    % recompute LS power on same frequency grid (normalized)
+    p_boot = plomb(permVel, time, 1./filteredPeriods, 'normalized');
+    maxPowers(b) = max(p_boot);
+end
+
+% Compute FAP per peak
+FAP = zeros(length(peakIdx),1);
+for i = 1:length(peakIdx)
+    z_obs = filteredPower(peakIdx(i));
+    exceedCount(i) = sum(maxPowers >= z_obs);
+    FAP(i) = (exceedCount(i) + 1) / (numPerms + 1);
+    fprintf('Period %.2f: FAP ≈ %.4f ( %d / %d )\n', ...
+            peakLocs(i), FAP(i), exceedCount(i), numPerms);
+end
